@@ -1,0 +1,40 @@
+{
+  "Actions": [
+    {
+      "Icon": "actionIcon",
+      "Name": "Rust Smart Switch",
+      "States": [
+        {
+          "Image": "Images/btn_custom_toggle_hotkey"
+        },
+        {
+          "Image": "Images/btn_custom_toggle_hotkey_off"
+        }
+      ],
+      "SupportedInMultiActions": false,
+      "Tooltip": "View and toggle a smart switch",
+      "UUID": "tech.macil.rustplus.smartswitch"
+    }
+  ],
+  "SDKVersion": 2,
+  "Author": "Macil Tech",
+  "CodePath": "code.html",
+  "Description": "Control in-game smart switches",
+  "Name": "Counter",
+  "Icon": "pluginIcon",
+  "URL": "https://macil.tech/streamdeck-rustplus",
+  "Version": "1.0",
+  "OS": [
+    {
+      "Platform": "mac",
+      "MinimumVersion": "10.11"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Software": {
+    "MinimumVersion": "4.1"
+  }
+}
