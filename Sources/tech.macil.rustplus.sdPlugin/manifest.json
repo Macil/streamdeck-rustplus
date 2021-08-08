@@ -16,6 +16,8 @@
       "UUID": "tech.macil.rustplus.smartswitch"
     }
   ],
+  "Category": "Rust+",
+  "CategoryIcon": "rustCategoryIcon",
   "SDKVersion": 2,
   "Author": "Macil Tech",
   "CodePath": "code.html",
