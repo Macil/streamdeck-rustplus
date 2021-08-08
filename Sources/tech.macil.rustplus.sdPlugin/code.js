@@ -54,6 +54,11 @@ function onWillAppear(context, settings) {
   setTitle(context, keyPressCounter);
 }
 
+function onWillDisappear(context, settings) {
+  // TODO if this is the last button connected to a specific
+  // server, start a timer for disconnecting from that server.
+}
+
 function setTitle(context, keyPressCounter) {
   const json = {
     event: "setTitle",
@@ -106,18 +111,22 @@ globalThis.connectElgatoStreamDeckSocket =
         return;
       }
 
-      if (event == "keyDown") {
+      if (event === "keyDown") {
         const { payload } = jsonObj;
         const { settings, state } = payload;
         onKeyDown(context, settings, state);
-      } else if (event == "keyUp") {
+      } else if (event === "keyUp") {
         const { payload } = jsonObj;
         const { settings, state } = payload;
         onKeyUp(context, settings, state);
-      } else if (event == "willAppear") {
+      } else if (event === "willAppear") {
         const { payload } = jsonObj;
         const { settings } = payload;
         onWillAppear(context, settings);
+      } else if (event === "willDisappear") {
+        const { payload } = jsonObj;
+        const { settings } = payload;
+        onWillDisappear(context, settings);
       }
     };
 

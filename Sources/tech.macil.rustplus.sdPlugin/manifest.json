@@ -19,7 +19,7 @@
   "SDKVersion": 2,
   "Author": "Macil Tech",
   "CodePath": "code.html",
-  "Description": "Control in-game smart switches",
+  "Description": "Control Rust in-game smart switches",
   "Name": "Rust+",
   "Icon": "pluginIcon",
   "URL": "https://macil.tech/streamdeck-rustplus",
