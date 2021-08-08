@@ -10,69 +10,69 @@ const DestinationEnum = Object.freeze({
 
 let timer = null;
 
-const counterAction = {
-  onKeyDown(context, settings, coordinates, userDesiredState) {
-    timer = setTimeout(function () {
-      const updatedSettings = {
-        keyPressCounter: -1
-      };
-
-      counterAction.SetSettings(context, updatedSettings);
-      counterAction.SetTitle(context, 0);
-    }, 1500);
-  },
-
-  onKeyUp(context, settings, coordinates, userDesiredState) {
-    clearTimeout(timer);
-
-    var keyPressCounter = 0;
-    if (settings != null && settings.hasOwnProperty("keyPressCounter")) {
-      keyPressCounter = settings["keyPressCounter"];
-    }
-
-    keyPressCounter++;
-
+function onKeyDown(context, settings, state) {
+  timer = setTimeout(() => {
     const updatedSettings = {
-      keyPressCounter
+      keyPressCounter: -1,
     };
 
-    this.SetSettings(context, updatedSettings);
+    setSettings(context, updatedSettings);
+    setTitle(context, 0);
+  }, 1500);
+}
 
-    this.SetTitle(context, keyPressCounter);
-  },
+function onKeyUp(context, settings, state) {
+  clearTimeout(timer);
 
-  onWillAppear(context, settings, coordinates) {
-    var keyPressCounter = 0;
-    if (settings != null && settings.hasOwnProperty("keyPressCounter")) {
-      keyPressCounter = settings["keyPressCounter"];
-    }
+  let keyPressCounter = 0;
+  if (
+    settings != null &&
+    Object.prototype.hasOwnProperty.call(settings, "keyPressCounter")
+  ) {
+    keyPressCounter = settings["keyPressCounter"];
+  }
 
-    this.SetTitle(context, keyPressCounter);
-  },
+  keyPressCounter++;
 
-  SetTitle(context, keyPressCounter) {
-    var json = {
-      event: "setTitle",
-      context: context,
-      payload: {
-        title: "" + keyPressCounter,
-        target: DestinationEnum.HARDWARE_AND_SOFTWARE,
-      },
-    };
+  const updatedSettings = {
+    keyPressCounter,
+  };
 
-    websocket.send(JSON.stringify(json));
-  },
+  setSettings(context, updatedSettings);
+  setTitle(context, keyPressCounter);
+}
 
-  SetSettings(context, settings) {
-    var json = {
-      event: "setSettings",
-      context: context,
-      payload: settings,
-    };
+function onWillAppear(context, settings) {
+  let keyPressCounter = 0;
+  if (
+    settings != null &&
+    Object.prototype.hasOwnProperty.call(settings, "keyPressCounter")
+  ) {
+    keyPressCounter = settings["keyPressCounter"];
+  }
 
-    websocket.send(JSON.stringify(json));
-  },
-};
+  setTitle(context, keyPressCounter);
+}
+
+function setTitle(context, keyPressCounter) {
+  const json = {
+    event: "setTitle",
+    context: context,
+    payload: {
+      title: "" + keyPressCounter,
+      target: DestinationEnum.HARDWARE_AND_SOFTWARE,
+    },
+  };
+  websocket.send(JSON.stringify(json));
+}
+function setSettings(context, settings) {
+  const json = {
+    event: "setSettings",
+    context: context,
+    payload: settings,
+  };
+  websocket.send(JSON.stringify(json));
+}
 
 globalThis.connectElgatoStreamDeckSocket =
   function connectElgatoStreamDeckSocket(
@@ -98,23 +98,26 @@ globalThis.connectElgatoStreamDeckSocket =
       const jsonObj = JSON.parse(evt.data);
       const { event, action, context } = jsonObj;
 
+      if (action !== "tech.macil.rustplus.smartswitch") {
+        console.warn(
+          "expected action=tech.macil.rustplus.smartswitch",
+          jsonObj
+        );
+        return;
+      }
+
       if (event == "keyDown") {
         const { payload } = jsonObj;
-        const { settings, coordinates, userDesiredState } = payload;
-        counterAction.onKeyDown(
-          context,
-          settings,
-          coordinates,
-          userDesiredState
-        );
+        const { settings, state } = payload;
+        onKeyDown(context, settings, state);
       } else if (event == "keyUp") {
         const { payload } = jsonObj;
-        const { settings, coordinates, userDesiredState } = payload;
-        counterAction.onKeyUp(context, settings, coordinates, userDesiredState);
+        const { settings, state } = payload;
+        onKeyUp(context, settings, state);
       } else if (event == "willAppear") {
         const { payload } = jsonObj;
-        const { settings, coordinates } = payload;
-        counterAction.onWillAppear(context, settings, coordinates);
+        const { settings } = payload;
+        onWillAppear(context, settings);
       }
     };
 
