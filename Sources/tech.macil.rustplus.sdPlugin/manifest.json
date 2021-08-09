@@ -27,7 +27,7 @@
   "Description": "Control Rust in-game smart switches",
   "Name": "Rust+",
   "Icon": "pluginIcon",
-  "URL": "https://macil.tech/streamdeck-rustplus",
+  "URL": "https://github.com/Macil/streamdeck-rustplus#readme",
   "Version": "1.0",
   "OS": [
     {
