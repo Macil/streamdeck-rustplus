@@ -15,7 +15,7 @@ const DestinationEnum = Object.freeze({
   SOFTWARE_ONLY: 2,
 });
 
-let protobufRoot;
+let protobufRoot, AppRequest, AppMessage;
 const protobufRootDefer = newPromiseDefer();
 
 protobuf.load("rustplus.proto", (err, root) => {
@@ -24,6 +24,8 @@ protobuf.load("rustplus.proto", (err, root) => {
     unhandledError(err);
   } else {
     protobufRoot = root;
+    AppRequest = protobufRoot.lookupType("rustplus.AppRequest");
+    AppMessage = protobufRoot.lookupType("rustplus.AppMessage");
     protobufRootDefer.resolve(root);
   }
 });
@@ -93,8 +95,6 @@ function handleConnect(context) {
         connection.reconnectTimer = setTimeout(setupWebsocket, 30 * 1000);
       });
 
-      const AppMessage = protobufRoot.lookupType("rustplus.AppMessage");
-
       websocket.onmessage = (event) => {
         try {
           const message = AppMessage.decode(new Uint8Array(event.data));
@@ -147,8 +147,6 @@ function onKeyDown(context, state) {
   const connection = connections[getConnectionKey(parsedConnectionConfig)];
   (async () => {
     await connection.websocketReadyDefer.promise;
-
-    const AppRequest = protobufRoot.lookupType("rustplus.AppRequest");
 
     const request = {
       entityId: parsedConnectionConfig.entityId,
