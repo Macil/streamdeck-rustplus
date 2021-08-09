@@ -2,8 +2,15 @@
 
 let sdWebsocket;
 
-// keys results from getConnectionKey(), and
-// values are {websocket, websocketReadyDefer, userCount, reconnectTimer, disconnectTimer, seq}
+/*
+keys results from getConnectionKey(), and values are
+{
+  websocket, websocketReadyDefer,
+  seq,
+  reconnectTimer, disconnectTimer,
+  contexts,
+}
+*/
 const connections = Object.create(null);
 
 // keys are context strings, and values {settings, parsedConnectionConfig}
@@ -53,15 +60,15 @@ function handleConnect(context) {
       clearTimeout(connection.disconnectTimer);
       connection.disconnectTimer = null;
     }
-    connection.userCount++;
+    connection.contexts.add(context);
   } else {
     const connection = {
       websocket: null,
       websocketReadyDefer: newPromiseDefer(),
       seq: 1,
-      userCount: 1,
       reconnectTimer: null,
       disconnectTimer: null,
+      contexts: new Set([context]),
     };
     connections[connectionKey] = connection;
 
@@ -118,8 +125,8 @@ function handleDisconnect(context) {
   }
   const connectionKey = getConnectionKey(parsedConnectionConfig);
   const connection = connections[connectionKey];
-  connection.userCount--;
-  if (connection.userCount === 0) {
+  connection.contexts.delete(context);
+  if (connection.contexts.size === 0) {
     connection.disconnectTimer = setTimeout(() => {
       removeConnection(connectionKey);
     }, 30 * 1000);
