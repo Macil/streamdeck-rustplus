@@ -92,7 +92,15 @@ function handleConnect(context) {
       connection.disconnectTimer = null;
     }
     connection.contexts.add(context);
-    connection.contextsByEntityId[parsedConnectionConfig.entityId] = context;
+    if (connection.contextsByEntityId[parsedConnectionConfig.entityId]) {
+      connection.contextsByEntityId[parsedConnectionConfig.entityId].add(
+        context
+      );
+    } else {
+      connection.contextsByEntityId[parsedConnectionConfig.entityId] = new Set([
+        context,
+      ]);
+    }
     if (connection.websocket?.readyState === WebSocket.OPEN) {
       refreshSmartSwitchEntityInfo(connection, context);
     }
@@ -105,7 +113,7 @@ function handleConnect(context) {
       disconnectTimer: null,
       contexts: new Set([context]),
       contextsByEntityId: Object.assign(Object.create(null), {
-        [parsedConnectionConfig.entityId]: context,
+        [parsedConnectionConfig.entityId]: new Set([context]),
       }),
       seqCallbacks: Object.create(null),
     };
@@ -174,11 +182,11 @@ function handleConnect(context) {
             }
           }
           if (message.broadcast?.entityChanged) {
-            const entityContext =
+            const entityContexts =
               connection.contextsByEntityId[
                 message.broadcast.entityChanged.entityId
-              ];
-            if (entityContext != null) {
+              ] || new Set();
+            for (const entityContext of entityContexts) {
               const { value } = message.broadcast.entityChanged.payload;
               const json = {
                 event: "setState",
@@ -211,7 +219,14 @@ function handleDisconnect(context) {
   const connectionKey = getConnectionKey(parsedConnectionConfig);
   const connection = connections[connectionKey];
   connection.contexts.delete(context);
-  delete connection.contextsByEntityId[parsedConnectionConfig.entityId];
+  connection.contextsByEntityId[parsedConnectionConfig.entityId].delete(
+    context
+  );
+  if (
+    connection.contextsByEntityId[parsedConnectionConfig.entityId].size === 0
+  ) {
+    delete connection.contextsByEntityId[parsedConnectionConfig.entityId];
+  }
   if (connection.contexts.size === 0) {
     connection.disconnectTimer = setTimeout(() => {
       sdLogMessage(`Cancelling connection to ${websocketUrl}`);
