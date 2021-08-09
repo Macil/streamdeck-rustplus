@@ -2,7 +2,7 @@
 
 // this is our global websocket, used to communicate from/to Stream Deck software
 // and some info about our plugin, as sent by Stream Deck software
-let websocket = null,
+let sdWebsocket = null,
   uuid = null,
   actionInfo = {},
   settings = {};
@@ -23,7 +23,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   // in case of the inActionInfo, we must parse it into JSON first
   actionInfo = JSON.parse(inActionInfo); // cache the info
   inInfo = JSON.parse(inInfo);
-  websocket = new WebSocket("ws://127.0.0.1:" + inPort);
+  sdWebsocket = new WebSocket("ws://127.0.0.1:" + inPort);
 
   /** Since the PI doesn't have access to your OS native settings
    * Stream Deck sends some color settings to PI
@@ -38,14 +38,14 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
 
   // if connection was established, the websocket sends
   // an 'onopen' event, where we need to register our PI
-  websocket.onopen = () => {
+  sdWebsocket.onopen = () => {
     const json = {
       event: inRegisterEvent,
       uuid: inUUID,
     };
     // register property inspector to Stream Deck
-    websocket.send(JSON.stringify(json));
-    websocketReady.resolve(websocket);
+    sdWebsocket.send(JSON.stringify(json));
+    websocketReady.resolve(sdWebsocket);
   };
 
   // websocket.onmessage = (evt) => {
@@ -56,7 +56,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   //   }
   // };
 
-  websocket.onerror = (event) => {
+  sdWebsocket.onerror = (event) => {
     websocketReady.reject(event.error || event);
     console.error("got error from websocket", event);
   };
@@ -68,7 +68,7 @@ function initPropertyInspector() {
 
 // our method to pass values to the plugin
 async function sendValueToPlugin(param, value) {
-  if (!websocket || websocket.readyState !== 1) {
+  if (!sdWebsocket || sdWebsocket.readyState !== 1) {
     await websocketReady;
   }
   const json = {
@@ -79,7 +79,7 @@ async function sendValueToPlugin(param, value) {
       [param]: value,
     },
   };
-  websocket.send(JSON.stringify(json));
+  sdWebsocket.send(JSON.stringify(json));
 }
 
 if (!isQT) {
@@ -107,6 +107,26 @@ function prepareDOMElements(baseElement = document) {
       sendValueToPlugin("sdpi_collection", returnValue);
     });
   });
+
+  if (isQT) {
+    baseElement.addEventListener("click", (event) => {
+      const anchorElement = event.target.closest("a");
+      if (
+        anchorElement &&
+        anchorElement.href &&
+        anchorElement.target === "_blank"
+      ) {
+        event.preventDefault();
+        const json = {
+          event: "openUrl",
+          payload: {
+            url: new URL(anchorElement.href, document.location.href).href,
+          },
+        };
+        sdWebsocket.send(JSON.stringify(json));
+      }
+    });
+  }
 }
 
 /** Stream Deck software passes system-highlight color information
