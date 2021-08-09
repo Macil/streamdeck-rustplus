@@ -5,10 +5,12 @@
       "Name": "Rust Smart Switch",
       "States": [
         {
-          "Image": "Images/btn_custom_toggle_hotkey"
+          "Image": "Images/btn_custom_toggle_hotkey",
+          "TitleAlignment": "bottom"
         },
         {
-          "Image": "Images/btn_custom_toggle_hotkey_off"
+          "Image": "Images/btn_custom_toggle_hotkey_off",
+          "TitleAlignment": "bottom"
         }
       ],
       "SupportedInMultiActions": false,
