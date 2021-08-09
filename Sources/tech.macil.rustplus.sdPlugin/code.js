@@ -416,9 +416,28 @@ globalThis.connectElgatoStreamDeckSocket =
             byContext[context].settings[key] = value;
             if (key === "connection-config") {
               handleDisconnect(context);
-              byContext[context].parsedConnectionConfig =
-                parseConnectionConfig(value);
+              const parsedConnectionConfig = (byContext[
+                context
+              ].parsedConnectionConfig = parseConnectionConfig(value));
               handleConnect(context);
+
+              if (parsedConnectionConfig) {
+                const connection =
+                  connections[getConnectionKey(parsedConnectionConfig)];
+                if (connection) {
+                  connection.websocketReadyDefer.promise
+                    .then(() => {
+                      const json = {
+                        event: "showOk",
+                        context,
+                      };
+                      sdWebsocket.send(JSON.stringify(json));
+                    })
+                    .catch((err) => {
+                      unhandledError(err, new Set([context]));
+                    });
+                }
+              }
             }
             saveSettings(context);
           }
