@@ -241,19 +241,14 @@ function onKeyUp(context, state) {
   })().catch((err) => unhandledError(err, new Set([context])));
 }
 
-function sendToRustServer(
-  connection,
-  parsedConnectionConfig,
-  data,
-  abortSignal
-) {
+function sendToRustServer(connection, parsedConnectionConfig, data, signal) {
   return new Promise((resolve, reject) => {
     if (connection.websocket?.readyState !== WebSocket.OPEN) {
       throw new Error(
         "sendToRustServer used on connection without active websocket"
       );
     }
-    if (abortSignal?.aborted) {
+    if (signal?.aborted) {
       throw new Error("Cancelled");
     }
 
@@ -264,18 +259,23 @@ function sendToRustServer(
       playerToken: parsedConnectionConfig.playerToken,
     };
 
+    function abortHandler() {
+      delete connection.seqCallbacks[request.seq];
+      reject(new Error("Cancelled"));
+    }
+
     connection.seqCallbacks[request.seq] = (err, response) => {
+      if (signal) {
+        signal.removeEventListener("abort", abortHandler);
+      }
       if (err) {
         reject(err);
       } else {
         resolve(response);
       }
     };
-    if (abortSignal) {
-      abortSignal.addEventListener("abort", () => {
-        delete connection.seqCallbacks[request.seq];
-        reject(new Error("Cancelled"));
-      });
+    if (signal) {
+      signal.addEventListener("abort", abortHandler, { once: true });
     }
 
     const protoRequest = AppRequest.fromObject(request);
