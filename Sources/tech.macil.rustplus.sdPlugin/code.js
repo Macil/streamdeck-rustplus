@@ -235,6 +235,21 @@ function onKeyUp(context, state) {
       playerToken: parsedConnectionConfig.playerToken,
     };
 
+    connection.seqCallbacks[request.seq] = (err, response) => {
+      try {
+        if (err) {
+          throw err;
+        }
+        if (!response.success) {
+          throw new Error(
+            "response indicated setEntityValue was not successful"
+          );
+        }
+      } catch (err) {
+        unhandledError(err, new Set([context]));
+      }
+    };
+
     const protoRequest = AppRequest.fromObject(request);
     connection.websocket.send(AppRequest.encode(protoRequest).finish());
   })().catch((err) => unhandledError(err, new Set([context])));
