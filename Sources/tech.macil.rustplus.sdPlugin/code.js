@@ -41,7 +41,23 @@ protobuf.load("rustplus.proto", (err, root) => {
 
 function unhandledError(err, contexts = new Set()) {
   console.error("Unhandled error:", err);
-  // TODO use logMessage here and showAlert
+  const errString = err.stack ?? String(err);
+  const json = {
+    event: "logMessage",
+    payload: {
+      message: `Got unhandled error (${Array.from(contexts).join(
+        ", "
+      )}): ${errString}`,
+    },
+  };
+  sdWebsocket.send(JSON.stringify(json));
+  for (const context of contexts) {
+    const json = {
+      event: "showAlert",
+      context,
+    };
+    sdWebsocket.send(JSON.stringify(json));
+  }
 }
 
 function getConnectionKey(parsedConnectionConfig) {
@@ -198,7 +214,10 @@ function removeConnection(connectionKey) {
 function onKeyUp(context, state) {
   const { parsedConnectionConfig } = byContext[context];
   if (!parsedConnectionConfig) {
-    // TODO show an error in this case
+    unhandledError(
+      new Error("No valid connection config for button"),
+      new Set([context])
+    );
     return;
   }
   const connection = connections[getConnectionKey(parsedConnectionConfig)];
@@ -235,6 +254,7 @@ function getSmartSwitchEntityInfo(connection, context) {
   connection.seqCallbacks[request.seq] = (err, response) => {
     try {
       if (err) {
+        // just ignore
         return;
       }
       const { value } = response.entityInfo.payload;
@@ -288,41 +308,45 @@ globalThis.connectElgatoStreamDeckSocket =
       const jsonObj = JSON.parse(evt.data);
       const { event, action, context } = jsonObj;
 
-      if (action !== "tech.macil.rustplus.smartswitch") {
-        return;
-      }
-
-      if (event === "keyUp") {
-        const { payload } = jsonObj;
-        const { state } = payload;
-        onKeyUp(context, state);
-      } else if (event === "willAppear") {
-        const { payload } = jsonObj;
-        const { settings } = payload;
-        byContext[context] = {
-          settings: settings || {},
-          parsedConnectionConfig: parseConnectionConfig(
-            settings?.["connection-config"]
-          ),
-        };
-        handleConnect(context);
-      } else if (event === "willDisappear") {
-        handleDisconnect(context);
-        delete byContext[context];
-      } else if (event === "sendToPlugin") {
-        const { payload } = jsonObj;
-        const sdpi_collection = payload?.sdpi_collection;
-        if (sdpi_collection) {
-          const { key, value } = sdpi_collection;
-          byContext[context].settings[key] = value;
-          if (key === "connection-config") {
-            handleDisconnect(context);
-            byContext[context].parsedConnectionConfig =
-              parseConnectionConfig(value);
-            handleConnect(context);
-          }
-          saveSettings(context);
+      try {
+        if (action !== "tech.macil.rustplus.smartswitch") {
+          return;
         }
+
+        if (event === "keyUp") {
+          const { payload } = jsonObj;
+          const { state } = payload;
+          onKeyUp(context, state);
+        } else if (event === "willAppear") {
+          const { payload } = jsonObj;
+          const { settings } = payload;
+          byContext[context] = {
+            settings: settings || {},
+            parsedConnectionConfig: parseConnectionConfig(
+              settings?.["connection-config"]
+            ),
+          };
+          handleConnect(context);
+        } else if (event === "willDisappear") {
+          handleDisconnect(context);
+          delete byContext[context];
+        } else if (event === "sendToPlugin") {
+          const { payload } = jsonObj;
+          const sdpi_collection = payload?.sdpi_collection;
+          if (sdpi_collection) {
+            const { key, value } = sdpi_collection;
+            byContext[context].settings[key] = value;
+            if (key === "connection-config") {
+              handleDisconnect(context);
+              byContext[context].parsedConnectionConfig =
+                parseConnectionConfig(value);
+              handleConnect(context);
+            }
+            saveSettings(context);
+          }
+        }
+      } catch (err) {
+        unhandledError(err, new Set([context]));
       }
     };
 
