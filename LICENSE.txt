@@ -26,3 +26,5 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 ---
 
 The files "rustIcon.svg", "rustCategoryIcon*.png", and "pluginIcon*.png" are based on https://files.facepunch.com/lewis/1b2911b1/rustplusbranding.svg.
+
+The files "smart_switch*.png" are based on https://rustlabs.com/img/items180/smart.switch.png.

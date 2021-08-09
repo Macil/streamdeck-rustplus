@@ -1,7 +1,7 @@
 {
   "Actions": [
     {
-      "Icon": "actionIcon",
+      "Icon": "Images/smart_switch",
       "Name": "Rust Smart Switch",
       "States": [
         {
