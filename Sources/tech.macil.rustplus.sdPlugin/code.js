@@ -82,7 +82,7 @@ function handleConnect(context) {
     connection.contexts.add(context);
     connection.contextsByEntityId[parsedConnectionConfig.entityId] = context;
     if (connection.websocket?.readyState === WebSocket.OPEN) {
-      getSmartSwitchEntityInfo(connection, context);
+      refreshSmartSwitchEntityInfo(connection, context);
     }
   } else {
     const connection = {
@@ -136,7 +136,7 @@ function handleConnect(context) {
       // query for entity states at start
       websocket.addEventListener("open", () => {
         connection.contexts.forEach((context) => {
-          getSmartSwitchEntityInfo(connection, context);
+          refreshSmartSwitchEntityInfo(connection, context);
         });
       });
 
@@ -224,70 +224,88 @@ function onKeyUp(context, state) {
   (async () => {
     await connection.websocketReadyDefer.promise;
 
-    const request = {
-      entityId: parsedConnectionConfig.entityId,
-      setEntityValue: {
-        value: state == 1,
-      },
+    const response = await sendToRustServer(
+      connection,
+      parsedConnectionConfig,
+      {
+        entityId: parsedConnectionConfig.entityId,
+        setEntityValue: {
+          value: state == 1,
+        },
+      }
+    );
 
+    if (!response.success) {
+      throw new Error("response indicated setEntityValue was not successful");
+    }
+  })().catch((err) => unhandledError(err, new Set([context])));
+}
+
+function sendToRustServer(
+  connection,
+  parsedConnectionConfig,
+  data,
+  abortSignal
+) {
+  return new Promise((resolve, reject) => {
+    if (connection.websocket?.readyState !== WebSocket.OPEN) {
+      throw new Error(
+        "sendToRustServer used on connection without active websocket"
+      );
+    }
+    if (abortSignal?.aborted) {
+      throw new Error("Cancelled");
+    }
+
+    const request = {
+      ...data,
       seq: connection.seq++,
       playerId: parsedConnectionConfig.playerId,
       playerToken: parsedConnectionConfig.playerToken,
     };
 
     connection.seqCallbacks[request.seq] = (err, response) => {
-      try {
-        if (err) {
-          throw err;
-        }
-        if (!response.success) {
-          throw new Error(
-            "response indicated setEntityValue was not successful"
-          );
-        }
-      } catch (err) {
-        unhandledError(err, new Set([context]));
+      if (err) {
+        reject(err);
+      } else {
+        resolve(response);
       }
     };
+    if (abortSignal) {
+      abortSignal.addEventListener("abort", () => {
+        delete connection.seqCallbacks[request.seq];
+        reject(new Error("Cancelled"));
+      });
+    }
 
     const protoRequest = AppRequest.fromObject(request);
     connection.websocket.send(AppRequest.encode(protoRequest).finish());
-  })().catch((err) => unhandledError(err, new Set([context])));
+  });
 }
 
-function getSmartSwitchEntityInfo(connection, context) {
-  const { parsedConnectionConfig } = byContext[context];
-  const request = {
-    entityId: parsedConnectionConfig.entityId,
-    getEntityInfo: {},
+function refreshSmartSwitchEntityInfo(connection, context) {
+  (async () => {
+    const { parsedConnectionConfig } = byContext[context];
 
-    seq: connection.seq++,
-    playerId: parsedConnectionConfig.playerId,
-    playerToken: parsedConnectionConfig.playerToken,
-  };
-
-  connection.seqCallbacks[request.seq] = (err, response) => {
-    try {
-      if (err) {
-        // just ignore
-        return;
+    const response = await sendToRustServer(
+      connection,
+      parsedConnectionConfig,
+      {
+        entityId: parsedConnectionConfig.entityId,
+        getEntityInfo: {},
       }
-      const { value } = response.entityInfo.payload;
-      const json = {
-        event: "setState",
-        context,
-        payload: {
-          state: value ? 0 : 1,
-        },
-      };
-      sdWebsocket.send(JSON.stringify(json));
-    } catch (err) {
-      unhandledError(err, new Set([context]));
-    }
-  };
+    );
 
-  const protoRequest = AppRequest.fromObject(request);
-  connection.websocket.send(AppRequest.encode(protoRequest).finish());
+    const { value } = response.entityInfo.payload;
+    const json = {
+      event: "setState",
+      context,
+      payload: {
+        state: value ? 0 : 1,
+      },
+    };
+    sdWebsocket.send(JSON.stringify(json));
+  })().catch((err) => unhandledError(err, new Set([context])));
 }
 
 function saveSettings(context) {
