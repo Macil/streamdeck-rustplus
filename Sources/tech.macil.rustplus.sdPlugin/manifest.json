@@ -21,6 +21,7 @@
   "SDKVersion": 2,
   "Author": "Macil Tech",
   "CodePath": "code.html",
+  "PropertyInspectorPath": "index_pi.html",
   "Description": "Control Rust in-game smart switches",
   "Name": "Rust+",
   "Icon": "pluginIcon",

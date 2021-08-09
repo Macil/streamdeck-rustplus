@@ -1,6 +1,7 @@
 "use strict";
 
 let websocket;
+let latestSettings;
 
 const DestinationEnum = Object.freeze({
   HARDWARE_AND_SOFTWARE: 0,
@@ -8,53 +9,35 @@ const DestinationEnum = Object.freeze({
   SOFTWARE_ONLY: 2,
 });
 
-let timer = null;
+let resetTimer = null;
 
-function onKeyDown(context, settings, state) {
-  timer = setTimeout(() => {
-    const updatedSettings = {
-      keyPressCounter: -1,
-    };
+function onKeyDown(context, state) {
+  resetTimer = setTimeout(() => {
+    latestSettings.keyPressCounter = -1;
 
-    setSettings(context, updatedSettings);
+    saveSettings(context);
     setTitle(context, 0);
   }, 1500);
 }
 
-function onKeyUp(context, settings, state) {
-  clearTimeout(timer);
+function onKeyUp(context, state) {
+  clearTimeout(resetTimer);
 
-  let keyPressCounter = 0;
-  if (
-    settings != null &&
-    Object.prototype.hasOwnProperty.call(settings, "keyPressCounter")
-  ) {
-    keyPressCounter = settings["keyPressCounter"];
-  }
+  let keyPressCounter = latestSettings.keyPressCounter ?? 0;
 
   keyPressCounter++;
+  latestSettings.keyPressCounter = keyPressCounter;
 
-  const updatedSettings = {
-    keyPressCounter,
-  };
-
-  setSettings(context, updatedSettings);
+  saveSettings(context);
   setTitle(context, keyPressCounter);
 }
 
-function onWillAppear(context, settings) {
-  let keyPressCounter = 0;
-  if (
-    settings != null &&
-    Object.prototype.hasOwnProperty.call(settings, "keyPressCounter")
-  ) {
-    keyPressCounter = settings["keyPressCounter"];
-  }
-
+function onWillAppear(context) {
+  const keyPressCounter = latestSettings.keyPressCounter ?? 0;
   setTitle(context, keyPressCounter);
 }
 
-function onWillDisappear(context, settings) {
+function onWillDisappear(context) {
   // TODO if this is the last button connected to a specific
   // server, start a timer for disconnecting from that server.
 }
@@ -62,7 +45,7 @@ function onWillDisappear(context, settings) {
 function setTitle(context, keyPressCounter) {
   const json = {
     event: "setTitle",
-    context: context,
+    context,
     payload: {
       title: "" + keyPressCounter,
       target: DestinationEnum.HARDWARE_AND_SOFTWARE,
@@ -70,11 +53,14 @@ function setTitle(context, keyPressCounter) {
   };
   websocket.send(JSON.stringify(json));
 }
-function setSettings(context, settings) {
+function saveSettings(context) {
+  if (!latestSettings) {
+    throw new Error("Can't save settings before loading them");
+  }
   const json = {
     event: "setSettings",
     context: context,
-    payload: settings,
+    payload: latestSettings,
   };
   websocket.send(JSON.stringify(json));
 }
@@ -114,19 +100,31 @@ globalThis.connectElgatoStreamDeckSocket =
       if (event === "keyDown") {
         const { payload } = jsonObj;
         const { settings, state } = payload;
-        onKeyDown(context, settings, state);
+        latestSettings = settings;
+        onKeyDown(context, state);
       } else if (event === "keyUp") {
         const { payload } = jsonObj;
         const { settings, state } = payload;
-        onKeyUp(context, settings, state);
+        latestSettings = settings;
+        onKeyUp(context, state);
       } else if (event === "willAppear") {
         const { payload } = jsonObj;
         const { settings } = payload;
-        onWillAppear(context, settings);
+        latestSettings = settings;
+        onWillAppear(context);
       } else if (event === "willDisappear") {
         const { payload } = jsonObj;
         const { settings } = payload;
-        onWillDisappear(context, settings);
+        latestSettings = settings;
+        onWillDisappear(context);
+      } else if (event === "sendToPlugin") {
+        const { payload } = jsonObj;
+        const sdpi_collection = payload?.sdpi_collection;
+        if (sdpi_collection) {
+          const { key, value } = sdpi_collection;
+          latestSettings[key] = value;
+          saveSettings(context);
+        }
       }
     };
 

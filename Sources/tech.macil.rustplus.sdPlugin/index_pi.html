@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <title>tech.macil.rustplus Property Inspector</title>
+    <link rel="stylesheet" href="css/sdpi.css" />
+  </head>
+
+  <body>
+    <div class="sdpi-wrapper">
+      <div class="sdpi-item" type="textarea">
+        <div class="sdpi-item-label">Connection Config (fcm-listen result)</div>
+        <details>
+          <summary>Show</summary>
+          <div class="sdpi-item-value textarea">
+            <textarea
+              type="textarea"
+              maxlength="4096"
+              id="connection-config"
+              placeholder="e.g. { img: '', port: '28017', ip: 'XXX'... }"
+              required
+            ></textarea>
+          </div>
+        </details>
+      </div>
+
+      <div class="sdpi-item">
+        <div class="sdpi-item-label">Device ID</div>
+        <input
+          class="sdpi-item-value"
+          id="device-id"
+          value=""
+          placeholder="e.g. 123"
+          required
+          pattern="\d+"
+        />
+      </div>
+    </div>
+
+    <script src="index_pi.js"></script>
+  </body>
+</html>
