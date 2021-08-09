@@ -4,7 +4,7 @@ This is an **unofficial** [Stream Deck](https://www.elgato.com/en/stream-deck-mk
 
 ## Install
 
-Go to the [Releases](https://github.com/liamcottle/rustplus.js/releases) page, download the latest "tech.macil.rustplus.streamDeckPlugin" file, and then open it to load the plugin into Stream Deck.
+Go to the [Releases](https://github.com/Macil/streamdeck-rustplus/releases) page, download the latest "tech.macil.rustplus.streamDeckPlugin" file, and then open it to load the plugin into Stream Deck.
 
 ## Configuring
 
