@@ -146,7 +146,13 @@ function handleConnect(context) {
           seqCallback(new Error("Connection closed"), null);
         }
         connection.seqCallbacks = Object.create(null);
-        connection.reconnectTimer = setTimeout(setupWebsocket, 30 * 1000);
+        connection.reconnectTimer = setTimeout(() => {
+          try {
+            setupWebsocket();
+          } catch (err) {
+            unhandledError(err, connection.contexts);
+          }
+        }, 30 * 1000);
       });
 
       // query for entity states at start
