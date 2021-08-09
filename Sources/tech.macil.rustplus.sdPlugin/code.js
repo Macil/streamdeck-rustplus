@@ -36,8 +36,6 @@ function getConnectionKey(parsedConnectionConfig) {
   return JSON.stringify([
     parsedConnectionConfig.ip,
     parsedConnectionConfig.port,
-    parsedConnectionConfig.playerId,
-    parsedConnectionConfig.playerToken,
   ]);
 }
 
