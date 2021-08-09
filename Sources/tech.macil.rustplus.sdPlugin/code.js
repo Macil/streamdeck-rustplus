@@ -9,6 +9,8 @@ keys results from getConnectionKey(), and values are
   seq,
   reconnectTimer, disconnectTimer,
   contexts,
+  contextsByEntityId,
+  seqCallbacks,
 }
 */
 const connections = Object.create(null);
@@ -37,8 +39,9 @@ protobuf.load("rustplus.proto", (err, root) => {
   }
 });
 
-function unhandledError(err) {
+function unhandledError(err, contexts = new Set()) {
   console.error("Unhandled error:", err);
+  // TODO use logMessage here and showAlert
 }
 
 function getConnectionKey(parsedConnectionConfig) {
@@ -61,6 +64,10 @@ function handleConnect(context) {
       connection.disconnectTimer = null;
     }
     connection.contexts.add(context);
+    connection.contextsByEntityId[parsedConnectionConfig.entityId] = context;
+    if (connection.websocket?.readyState === WebSocket.OPEN) {
+      getSmartSwitchEntityInfo(connection, context);
+    }
   } else {
     const connection = {
       websocket: null,
@@ -69,6 +76,10 @@ function handleConnect(context) {
       reconnectTimer: null,
       disconnectTimer: null,
       contexts: new Set([context]),
+      contextsByEntityId: Object.assign(Object.create(null), {
+        [parsedConnectionConfig.entityId]: context,
+      }),
+      seqCallbacks: Object.create(null),
     };
     connections[connectionKey] = connection;
 
@@ -99,22 +110,57 @@ function handleConnect(context) {
         connection.seq = 0;
         connection.websocket = null;
         connection.websocketReadyDefer = newPromiseDefer();
+        for (const seqCallback of Object.values(connection.seqCallbacks)) {
+          seqCallback(new Error("Connection closed"), null);
+        }
+        connection.seqCallbacks = Object.create(null);
         connection.reconnectTimer = setTimeout(setupWebsocket, 30 * 1000);
+      });
+
+      // query for entity states at start
+      websocket.addEventListener("open", () => {
+        connection.contexts.forEach((context) => {
+          getSmartSwitchEntityInfo(connection, context);
+        });
       });
 
       websocket.onmessage = (event) => {
         try {
           const message = AppMessage.decode(new Uint8Array(event.data));
           console.log("got message", message);
+          if (message.response) {
+            const seqCallback = connection.seqCallbacks[message.response.seq];
+            if (seqCallback) {
+              delete connection.seqCallbacks[message.response.seq];
+              seqCallback(null, message.response);
+            }
+          }
+          if (message.broadcast?.entityChanged) {
+            const entityContext =
+              connection.contextsByEntityId[
+                message.broadcast.entityChanged.entityId
+              ];
+            if (entityContext != null) {
+              const { value } = message.broadcast.entityChanged.payload;
+              const json = {
+                event: "setState",
+                context: entityContext,
+                payload: {
+                  state: value ? 0 : 1,
+                },
+              };
+              sdWebsocket.send(JSON.stringify(json));
+            }
+          }
         } catch (err) {
-          unhandledError(err);
+          unhandledError(err, connection.contexts);
         }
       };
     }
 
     protobufRootDefer.promise
       .then(() => setupWebsocket())
-      .catch(unhandledError);
+      .catch((err) => unhandledError(err, connection.contexts));
   }
 }
 
@@ -126,6 +172,7 @@ function handleDisconnect(context) {
   const connectionKey = getConnectionKey(parsedConnectionConfig);
   const connection = connections[connectionKey];
   connection.contexts.delete(context);
+  delete connection.contextsByEntityId[parsedConnectionConfig.entityId];
   if (connection.contexts.size === 0) {
     connection.disconnectTimer = setTimeout(() => {
       removeConnection(connectionKey);
@@ -142,10 +189,13 @@ function removeConnection(connectionKey) {
   if (connection.reconnectTimer != null) {
     clearTimeout(connection.reconnectTimer);
   }
+  for (const seqCallback of Object.values(connection.seqCallbacks)) {
+    seqCallback(new Error("Connection removed"), null);
+  }
   connection.websocket?.close();
 }
 
-function onKeyDown(context, state) {
+function onKeyUp(context, state) {
   const { parsedConnectionConfig } = byContext[context];
   if (!parsedConnectionConfig) {
     // TODO show an error in this case
@@ -168,7 +218,41 @@ function onKeyDown(context, state) {
 
     const protoRequest = AppRequest.fromObject(request);
     connection.websocket.send(AppRequest.encode(protoRequest).finish());
-  })().catch(unhandledError);
+  })().catch((err) => unhandledError(err, new Set([context])));
+}
+
+function getSmartSwitchEntityInfo(connection, context) {
+  const { parsedConnectionConfig } = byContext[context];
+  const request = {
+    entityId: parsedConnectionConfig.entityId,
+    getEntityInfo: {},
+
+    seq: connection.seq++,
+    playerId: parsedConnectionConfig.playerId,
+    playerToken: parsedConnectionConfig.playerToken,
+  };
+
+  connection.seqCallbacks[request.seq] = (err, response) => {
+    try {
+      if (err) {
+        return;
+      }
+      const { value } = response.entityInfo.payload;
+      const json = {
+        event: "setState",
+        context,
+        payload: {
+          state: value ? 0 : 1,
+        },
+      };
+      sdWebsocket.send(JSON.stringify(json));
+    } catch (err) {
+      unhandledError(err, new Set([context]));
+    }
+  };
+
+  const protoRequest = AppRequest.fromObject(request);
+  connection.websocket.send(AppRequest.encode(protoRequest).finish());
 }
 
 function saveSettings(context) {
@@ -208,10 +292,10 @@ globalThis.connectElgatoStreamDeckSocket =
         return;
       }
 
-      if (event === "keyDown") {
+      if (event === "keyUp") {
         const { payload } = jsonObj;
         const { state } = payload;
-        onKeyDown(context, state);
+        onKeyUp(context, state);
       } else if (event === "willAppear") {
         const { payload } = jsonObj;
         const { settings } = payload;
