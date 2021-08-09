@@ -222,18 +222,20 @@ function onKeyUp(context, state) {
   }
   const connection = connections[getConnectionKey(parsedConnectionConfig)];
   (async () => {
-    await connection.websocketReadyDefer.promise;
-
-    const response = await sendToRustServer(
-      connection,
-      parsedConnectionConfig,
-      {
-        entityId: parsedConnectionConfig.entityId,
-        setEntityValue: {
-          value: state == 1,
+    const response = await runWithTimeout(async (signal) => {
+      await connection.websocketReadyDefer.promise;
+      return await sendToRustServer(
+        connection,
+        parsedConnectionConfig,
+        {
+          entityId: parsedConnectionConfig.entityId,
+          setEntityValue: {
+            value: state == 1,
+          },
         },
-      }
-    );
+        signal
+      );
+    }, 10 * 1000);
 
     if (!response.success) {
       throw new Error("response indicated setEntityValue was not successful");
@@ -281,6 +283,25 @@ function sendToRustServer(connection, parsedConnectionConfig, data, signal) {
     const protoRequest = AppRequest.fromObject(request);
     connection.websocket.send(AppRequest.encode(protoRequest).finish());
   });
+}
+
+async function runWithTimeout(asyncFn, timeout) {
+  const abortController = new AbortController();
+  function timeHandler() {
+    abortController.abort();
+  }
+  const timer = setTimeout(timeHandler, timeout);
+  try {
+    return await asyncFn(abortController.signal);
+  } catch (err) {
+    if (abortController.signal.aborted) {
+      throw new Error("Function timed out", { cause: err });
+    } else {
+      throw err;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function refreshSmartSwitchEntityInfo(connection, context) {
