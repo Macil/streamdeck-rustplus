@@ -39,18 +39,26 @@ protobuf.load("rustplus.proto", (err, root) => {
   }
 });
 
-function unhandledError(err, contexts = new Set()) {
-  console.error("Unhandled error:", err);
-  const errString = err.stack ?? String(err);
+function sdLogMessage(message, quiet = false) {
+  if (!quiet) {
+    console.log(message);
+  }
   const json = {
     event: "logMessage",
     payload: {
-      message: `Got unhandled error (${Array.from(contexts).join(
-        ", "
-      )}): ${errString}`,
+      message,
     },
   };
   sdWebsocket.send(JSON.stringify(json));
+}
+
+function unhandledError(err, contexts = new Set()) {
+  console.error("Unhandled error:", err);
+  const errString = err.stack ?? String(err);
+  sdLogMessage(
+    `Got unhandled error (${Array.from(contexts).join(", ")}): ${errString}`,
+    true
+  );
   for (const context of contexts) {
     const json = {
       event: "showAlert",
@@ -65,6 +73,10 @@ function getConnectionKey(parsedConnectionConfig) {
     parsedConnectionConfig.ip,
     parsedConnectionConfig.port,
   ]);
+}
+
+function getWebsocketUrl(parsedConnectionConfig) {
+  return `ws://${parsedConnectionConfig.ip}:${parsedConnectionConfig.port}`;
 }
 
 function handleConnect(context) {
@@ -100,14 +112,15 @@ function handleConnect(context) {
     connections[connectionKey] = connection;
 
     function setupWebsocket() {
-      const websocket = (connection.websocket = new WebSocket(
-        `ws://${parsedConnectionConfig.ip}:${parsedConnectionConfig.port}`
-      ));
+      const websocketUrl = getWebsocketUrl(parsedConnectionConfig);
+      const websocket = (connection.websocket = new WebSocket(websocketUrl));
       websocket.binaryType = "arraybuffer";
+      sdLogMessage(`Connecting to ${websocketUrl}...`);
       connection.websocketReadyDefer.resolve(
         new Promise((resolve, reject) => {
           websocket.addEventListener("open", () => {
             resolve(websocket);
+            sdLogMessage(`Successfully opened connection to ${websocketUrl}`);
           });
           websocket.addEventListener("error", (event) => {
             reject(event.error || event);
@@ -123,6 +136,9 @@ function handleConnect(context) {
         if (connections[connectionKey] !== connection) {
           return;
         }
+        sdLogMessage(
+          `Connection to ${websocketUrl} closed unexpectedly, scheduling reconnect`
+        );
         connection.seq = 0;
         connection.websocket = null;
         connection.websocketReadyDefer = newPromiseDefer();
@@ -185,12 +201,14 @@ function handleDisconnect(context) {
   if (!parsedConnectionConfig) {
     return;
   }
+  const websocketUrl = getWebsocketUrl(parsedConnectionConfig);
   const connectionKey = getConnectionKey(parsedConnectionConfig);
   const connection = connections[connectionKey];
   connection.contexts.delete(context);
   delete connection.contextsByEntityId[parsedConnectionConfig.entityId];
   if (connection.contexts.size === 0) {
     connection.disconnectTimer = setTimeout(() => {
+      sdLogMessage(`Cancelling connection to ${websocketUrl}`);
       removeConnection(connectionKey);
     }, 30 * 1000);
   }
