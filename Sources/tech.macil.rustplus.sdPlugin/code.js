@@ -1,12 +1,13 @@
 "use strict";
 
-let websocket;
+let sdWebsocket;
 
-// keys are ip|port, and values are {websocket, keyCount, disconnectTimer}
-const connections = {};
+// keys results from getConnectionKey(), and
+// values are {websocket, websocketReadyDefer, userCount, reconnectTimer, disconnectTimer, seq}
+const connections = Object.create(null);
 
 // keys are context strings, and values {settings, parsedConnectionConfig}
-const byContext = {};
+const byContext = Object.create(null);
 
 const DestinationEnum = Object.freeze({
   HARDWARE_AND_SOFTWARE: 0,
@@ -14,54 +15,166 @@ const DestinationEnum = Object.freeze({
   SOFTWARE_ONLY: 2,
 });
 
-function parseConnectionConfig(connectionConfigStr) {
-  if (!connectionConfigStr) {
-    return null;
+let protobufRoot;
+const protobufRootDefer = newPromiseDefer();
+
+protobuf.load("rustplus.proto", (err, root) => {
+  if (err) {
+    protobufRootDefer.reject(err);
+    unhandledError(err);
+  } else {
+    protobufRoot = root;
+    protobufRootDefer.resolve(root);
   }
-  try {
-    const indirectEval = eval;
-    return indirectEval('('+connectionConfigStr+')');
-  } catch (e) {
-    return null;
+});
+
+function unhandledError(err) {
+  console.error("Unhandled error:", err);
+}
+
+function getConnectionKey(parsedConnectionConfig) {
+  return JSON.stringify([
+    parsedConnectionConfig.ip,
+    parsedConnectionConfig.port,
+    parsedConnectionConfig.playerId,
+    parsedConnectionConfig.playerToken,
+  ]);
+}
+
+function handleConnect(context) {
+  const { parsedConnectionConfig } = byContext[context];
+  if (!parsedConnectionConfig) {
+    return;
   }
+  const connectionKey = getConnectionKey(parsedConnectionConfig);
+  const connection = connections[connectionKey];
+  if (connection) {
+    if (connection.disconnectTimer != null) {
+      clearTimeout(connection.disconnectTimer);
+      connection.disconnectTimer = null;
+    }
+    connection.userCount++;
+  } else {
+    const connection = {
+      websocket: null,
+      websocketReadyDefer: newPromiseDefer(),
+      seq: 1,
+      userCount: 1,
+      reconnectTimer: null,
+      disconnectTimer: null,
+    };
+    connections[connectionKey] = connection;
+
+    function setupWebsocket() {
+      const websocket = (connection.websocket = new WebSocket(
+        `ws://${parsedConnectionConfig.ip}:${parsedConnectionConfig.port}`
+      ));
+      websocket.binaryType = "arraybuffer";
+      connection.websocketReadyDefer.resolve(
+        new Promise((resolve, reject) => {
+          websocket.addEventListener("open", () => {
+            resolve(websocket);
+          });
+          websocket.addEventListener("error", (event) => {
+            reject(event.error || event);
+          });
+          websocket.addEventListener("close", () => {
+            reject(new Error("websocket closed before opening"));
+          });
+        })
+      );
+
+      // reconnect logic
+      websocket.addEventListener("close", () => {
+        if (connections[connectionKey] !== connection) {
+          return;
+        }
+        connection.seq = 0;
+        connection.websocket = null;
+        connection.websocketReadyDefer = newPromiseDefer();
+        connection.reconnectTimer = setTimeout(setupWebsocket, 30 * 1000);
+      });
+
+      const AppMessage = protobufRoot.lookupType("rustplus.AppMessage");
+
+      websocket.onmessage = (event) => {
+        try {
+          const message = AppMessage.decode(new Uint8Array(event.data));
+          console.log("got message", message);
+        } catch (err) {
+          unhandledError(err);
+        }
+      };
+    }
+
+    protobufRootDefer.promise
+      .then(() => setupWebsocket())
+      .catch(unhandledError);
+  }
+}
+
+function handleDisconnect(context) {
+  const { parsedConnectionConfig } = byContext[context];
+  if (!parsedConnectionConfig) {
+    return;
+  }
+  const connectionKey = getConnectionKey(parsedConnectionConfig);
+  const connection = connections[connectionKey];
+  connection.userCount--;
+  if (connection.userCount === 0) {
+    connection.disconnectTimer = setTimeout(() => {
+      removeConnection(connectionKey);
+    }, 30 * 1000);
+  }
+}
+
+function removeConnection(connectionKey) {
+  const connection = connections[connectionKey];
+  delete connections[connectionKey];
+  if (connection.disconnectTimer != null) {
+    clearTimeout(connection.disconnectTimer);
+  }
+  if (connection.reconnectTimer != null) {
+    clearTimeout(connection.reconnectTimer);
+  }
+  connection.websocket?.close();
 }
 
 function onKeyDown(context, state) {
-  let keyPressCounter = byContext[context].settings.keyPressCounter ?? 0;
+  const { parsedConnectionConfig } = byContext[context];
+  if (!parsedConnectionConfig) {
+    // TODO show an error in this case
+    return;
+  }
+  const connection = connections[getConnectionKey(parsedConnectionConfig)];
+  (async () => {
+    await connection.websocketReadyDefer.promise;
 
-  keyPressCounter++;
-  byContext[context].settings.keyPressCounter = keyPressCounter;
+    const AppRequest = protobufRoot.lookupType("rustplus.AppRequest");
 
-  saveSettings(context);
-  setTitle(context, keyPressCounter);
+    const request = {
+      entityId: parsedConnectionConfig.entityId,
+      setEntityValue: {
+        value: state == 1,
+      },
+
+      seq: connection.seq++,
+      playerId: parsedConnectionConfig.playerId,
+      playerToken: parsedConnectionConfig.playerToken,
+    };
+
+    const protoRequest = AppRequest.fromObject(request);
+    connection.websocket.send(AppRequest.encode(protoRequest).finish());
+  })().catch(unhandledError);
 }
 
-function onKeyUp(context, state) {
-}
-
-function onWillAppear(context) {
-  const keyPressCounter = byContext[context].settings.keyPressCounter ?? 0;
-  setTitle(context, keyPressCounter);
-}
-
-function setTitle(context, keyPressCounter) {
-  const json = {
-    event: "setTitle",
-    context,
-    payload: {
-      title: "" + keyPressCounter,
-      target: DestinationEnum.HARDWARE_AND_SOFTWARE,
-    },
-  };
-  websocket.send(JSON.stringify(json));
-}
 function saveSettings(context) {
   const json = {
     event: "setSettings",
     context: context,
     payload: byContext[context].settings,
   };
-  websocket.send(JSON.stringify(json));
+  sdWebsocket.send(JSON.stringify(json));
 }
 
 globalThis.connectElgatoStreamDeckSocket =
@@ -72,18 +185,18 @@ globalThis.connectElgatoStreamDeckSocket =
     inInfo
   ) {
     // Open the web socket
-    websocket = new WebSocket("ws://127.0.0.1:" + inPort);
+    sdWebsocket = new WebSocket("ws://127.0.0.1:" + inPort);
 
-    websocket.onopen = () => {
+    sdWebsocket.onopen = () => {
       // WebSocket is connected, send message
       const json = {
         event: inRegisterEvent,
         uuid: inPluginUUID,
       };
-      websocket.send(JSON.stringify(json));
+      sdWebsocket.send(JSON.stringify(json));
     };
 
-    websocket.onmessage = (evt) => {
+    sdWebsocket.onmessage = (evt) => {
       // Received message from Stream Deck
       const jsonObj = JSON.parse(evt.data);
       const { event, action, context } = jsonObj;
@@ -96,21 +209,18 @@ globalThis.connectElgatoStreamDeckSocket =
         const { payload } = jsonObj;
         const { state } = payload;
         onKeyDown(context, state);
-      } else if (event === "keyUp") {
-        const { payload } = jsonObj;
-        const { state } = payload;
-        onKeyUp(context, state);
       } else if (event === "willAppear") {
         const { payload } = jsonObj;
         const { settings } = payload;
         byContext[context] = {
           settings: settings || {},
-          parsedConnectionConfig: parseConnectionConfig(settings?.['connection-config'])
+          parsedConnectionConfig: parseConnectionConfig(
+            settings?.["connection-config"]
+          ),
         };
-        onWillAppear(context);
+        handleConnect(context);
       } else if (event === "willDisappear") {
-        // TODO if this is the last button connected to a specific
-        // server, start a timer for disconnecting from that server.
+        handleDisconnect(context);
         delete byContext[context];
       } else if (event === "sendToPlugin") {
         const { payload } = jsonObj;
@@ -118,15 +228,18 @@ globalThis.connectElgatoStreamDeckSocket =
         if (sdpi_collection) {
           const { key, value } = sdpi_collection;
           byContext[context].settings[key] = value;
-          if (key === 'connection-config') {
-            byContext[context].parsedConnectionConfig = parseConnectionConfig(value);
+          if (key === "connection-config") {
+            handleDisconnect(context);
+            byContext[context].parsedConnectionConfig =
+              parseConnectionConfig(value);
+            handleConnect(context);
           }
           saveSettings(context);
         }
       }
     };
 
-    websocket.onclose = () => {
+    sdWebsocket.onclose = () => {
       // Websocket is closed
     };
   };

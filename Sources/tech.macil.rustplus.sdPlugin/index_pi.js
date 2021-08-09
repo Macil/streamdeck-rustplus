@@ -7,15 +7,6 @@ let websocket = null,
   actionInfo = {},
   settings = {};
 
-function newPromiseDefer() {
-  let resolve, reject;
-  const promise = new Promise((_resolve, _reject) => {
-    resolve = _resolve;
-    reject = _reject;
-  });
-  return { promise, resolve, reject };
-}
-
 const websocketReady = newPromiseDefer();
 
 const isQT = navigator.appVersion.includes("QtWebEngine");
@@ -66,7 +57,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   // };
 
   websocket.onerror = (event) => {
-    websocketReady.reject(event);
+    websocketReady.reject(event.error || event);
     console.error("got error from websocket", event);
   };
 };

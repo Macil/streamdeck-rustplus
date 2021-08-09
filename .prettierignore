@@ -1,0 +1,4 @@
+protobuf.min.js
+long.js
+*.map
+/Sources/tech.macil.rustplus.sdPlugin/css
