@@ -1,7 +1,12 @@
 "use strict";
 
 let websocket;
-let latestSettings;
+
+// keys are ip|port, and values are {websocket, keyCount, disconnectTimer}
+const connections = {};
+
+// keys are context strings, and values {settings, parsedConnectionConfig}
+const byContext = {};
 
 const DestinationEnum = Object.freeze({
   HARDWARE_AND_SOFTWARE: 0,
@@ -9,37 +14,34 @@ const DestinationEnum = Object.freeze({
   SOFTWARE_ONLY: 2,
 });
 
-let resetTimer = null;
-
-function onKeyDown(context, state) {
-  resetTimer = setTimeout(() => {
-    latestSettings.keyPressCounter = -1;
-
-    saveSettings(context);
-    setTitle(context, 0);
-  }, 1500);
+function parseConnectionConfig(connectionConfigStr) {
+  if (!connectionConfigStr) {
+    return null;
+  }
+  try {
+    const indirectEval = eval;
+    return indirectEval('('+connectionConfigStr+')');
+  } catch (e) {
+    return null;
+  }
 }
 
-function onKeyUp(context, state) {
-  clearTimeout(resetTimer);
-
-  let keyPressCounter = latestSettings.keyPressCounter ?? 0;
+function onKeyDown(context, state) {
+  let keyPressCounter = byContext[context].settings.keyPressCounter ?? 0;
 
   keyPressCounter++;
-  latestSettings.keyPressCounter = keyPressCounter;
+  byContext[context].settings.keyPressCounter = keyPressCounter;
 
   saveSettings(context);
   setTitle(context, keyPressCounter);
 }
 
-function onWillAppear(context) {
-  const keyPressCounter = latestSettings.keyPressCounter ?? 0;
-  setTitle(context, keyPressCounter);
+function onKeyUp(context, state) {
 }
 
-function onWillDisappear(context) {
-  // TODO if this is the last button connected to a specific
-  // server, start a timer for disconnecting from that server.
+function onWillAppear(context) {
+  const keyPressCounter = byContext[context].settings.keyPressCounter ?? 0;
+  setTitle(context, keyPressCounter);
 }
 
 function setTitle(context, keyPressCounter) {
@@ -54,13 +56,10 @@ function setTitle(context, keyPressCounter) {
   websocket.send(JSON.stringify(json));
 }
 function saveSettings(context) {
-  if (!latestSettings) {
-    throw new Error("Can't save settings before loading them");
-  }
   const json = {
     event: "setSettings",
     context: context,
-    payload: latestSettings,
+    payload: byContext[context].settings,
   };
   websocket.send(JSON.stringify(json));
 }
@@ -90,39 +89,38 @@ globalThis.connectElgatoStreamDeckSocket =
       const { event, action, context } = jsonObj;
 
       if (action !== "tech.macil.rustplus.smartswitch") {
-        console.warn(
-          "expected action=tech.macil.rustplus.smartswitch",
-          jsonObj
-        );
         return;
       }
 
       if (event === "keyDown") {
         const { payload } = jsonObj;
-        const { settings, state } = payload;
-        latestSettings = settings;
+        const { state } = payload;
         onKeyDown(context, state);
       } else if (event === "keyUp") {
         const { payload } = jsonObj;
-        const { settings, state } = payload;
-        latestSettings = settings;
+        const { state } = payload;
         onKeyUp(context, state);
       } else if (event === "willAppear") {
         const { payload } = jsonObj;
         const { settings } = payload;
-        latestSettings = settings;
+        byContext[context] = {
+          settings: settings || {},
+          parsedConnectionConfig: parseConnectionConfig(settings?.['connection-config'])
+        };
         onWillAppear(context);
       } else if (event === "willDisappear") {
-        const { payload } = jsonObj;
-        const { settings } = payload;
-        latestSettings = settings;
-        onWillDisappear(context);
+        // TODO if this is the last button connected to a specific
+        // server, start a timer for disconnecting from that server.
+        delete byContext[context];
       } else if (event === "sendToPlugin") {
         const { payload } = jsonObj;
         const sdpi_collection = payload?.sdpi_collection;
         if (sdpi_collection) {
           const { key, value } = sdpi_collection;
-          latestSettings[key] = value;
+          byContext[context].settings[key] = value;
+          if (key === 'connection-config') {
+            byContext[context].parsedConnectionConfig = parseConnectionConfig(value);
+          }
           saveSettings(context);
         }
       }
