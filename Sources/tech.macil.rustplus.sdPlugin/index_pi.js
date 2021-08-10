@@ -80,13 +80,25 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
     sdWebsocketReadyDefer.resolve(sdWebsocket);
   };
 
-  // websocket.onmessage = (evt) => {
-  //   // Received message from Stream Deck
-  //   const jsonObj = JSON.parse(evt.data);
-  //   const {event} = jsonObj;
-  //   if (event === "sendToPropertyInspector") {
-  //   }
-  // };
+  sdWebsocket.onmessage = (evt) => {
+    // Received message from Stream Deck
+    const jsonObj = JSON.parse(evt.data);
+    const { event } = jsonObj;
+    if (event === "didReceiveSettings") {
+      console.log("didReceiveSettings", jsonObj);
+      const oldSettings = settings;
+      settings = jsonObj.payload.settings;
+      // For any changed settings, update any corresponding inputs
+      Object.keys(settings).forEach((key) => {
+        if (settings[key] !== oldSettings[key]) {
+          const el = document.getElementById(key);
+          if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+            el.value = settings[key];
+          }
+        }
+      });
+    }
+  };
 
   sdWebsocket.onerror = (event) => {
     sdWebsocketReadyDefer.reject(event.error || event);
