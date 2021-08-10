@@ -7,7 +7,7 @@ let sdWebsocket = null,
   actionInfo = {},
   settings;
 
-const sdWebsocketReady = newPromiseDefer();
+const sdWebsocketReadyDefer = newPromiseDefer();
 
 const isQT = navigator.appVersion.includes("QtWebEngine");
 
@@ -56,7 +56,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
     };
     // register property inspector to Stream Deck
     sdWebsocket.send(JSON.stringify(json));
-    sdWebsocketReady.resolve(sdWebsocket);
+    sdWebsocketReadyDefer.resolve(sdWebsocket);
   };
 
   // websocket.onmessage = (evt) => {
@@ -68,7 +68,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   // };
 
   sdWebsocket.onerror = (event) => {
-    sdWebsocketReady.reject(event.error || event);
+    sdWebsocketReadyDefer.reject(event.error || event);
     console.error("got error from websocket", event);
   };
 };
@@ -93,7 +93,7 @@ function parseConnectionConfig(connectionConfigStr) {
 
 async function saveSettings() {
   if (sdWebsocket?.readyState !== WebSocket.OPEN) {
-    await sdWebsocketReady;
+    await sdWebsocketReadyDefer.promise;
   }
   const json = {
     event: "setSettings",
