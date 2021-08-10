@@ -357,7 +357,7 @@ function refreshSmartSwitchEntityInfo(connection, context) {
     );
 
     if (!response.entityInfo) {
-      throw new Error('Entity does not exist');
+      throw new Error("Entity does not exist");
     }
     const { value } = response.entityInfo.payload;
     const json = {
