@@ -53,12 +53,10 @@ function sdLogMessage(message, quiet = false) {
 }
 
 function unhandledError(err, contexts = new Set()) {
-  console.error("Unhandled error:", err);
+  const contextListStr = Array.from(contexts).join(", ");
+  console.error(`Got unhandled error (${contextListStr}):`, err);
   const errString = err.stack ?? String(err);
-  sdLogMessage(
-    `Got unhandled error (${Array.from(contexts).join(", ")}): ${errString}`,
-    true
-  );
+  sdLogMessage(`Got unhandled error (${contextListStr}): ${errString}`, true);
   for (const context of contexts) {
     const json = {
       event: "showAlert",
@@ -196,6 +194,10 @@ function handleConnect(context) {
                 },
               };
               sdWebsocket.send(JSON.stringify(json));
+              if (value !== byContext[entityContext].settings.lastKnownState) {
+                byContext[entityContext].settings.lastKnownState = value;
+                saveSettings(entityContext);
+              }
             }
           }
         } catch (err) {
@@ -251,16 +253,13 @@ function removeConnection(connectionKey) {
 }
 
 function onKeyUp(context, state) {
-  const { parsedConnectionConfig } = byContext[context].settings;
-  if (!parsedConnectionConfig) {
-    unhandledError(
-      new Error("No valid connection config for button"),
-      new Set([context])
-    );
-    return;
-  }
-  const connection = connections[getConnectionKey(parsedConnectionConfig)];
   (async () => {
+    const { parsedConnectionConfig } = byContext[context].settings;
+    if (!parsedConnectionConfig) {
+      throw new Error("No valid connection config for button");
+    }
+    const connection = connections[getConnectionKey(parsedConnectionConfig)];
+
     const response = await runWithTimeout(async (signal) => {
       await connection.websocketReadyDefer.promise;
       return await sendToRustServer(
@@ -279,7 +278,22 @@ function onKeyUp(context, state) {
     if (!response.success) {
       throw new Error("response indicated setEntityValue was not successful");
     }
-  })().catch((err) => unhandledError(err, new Set([context])));
+  })().catch((err) => {
+    // revert button state to last verified state
+    const json = {
+      event: "setState",
+      context,
+      payload: {
+        state: byContext[context].settings.lastKnownState ? 0 : 1,
+      },
+    };
+    sdWebsocket.send(JSON.stringify(json));
+
+    // Possible Stream Deck bug: if the showAlert happens before the setState,
+    // then the setState gets reverted a few seconds after the alert goes away,
+    // so it's important these statements happen in this order.
+    unhandledError(err, new Set([context]));
+  });
 }
 
 function sendToRustServer(connection, parsedConnectionConfig, data, signal) {
@@ -368,7 +382,21 @@ function refreshSmartSwitchEntityInfo(connection, context) {
       },
     };
     sdWebsocket.send(JSON.stringify(json));
+
+    if (value !== byContext[context].settings.lastKnownState) {
+      byContext[context].settings.lastKnownState = value;
+      saveSettings(context);
+    }
   })().catch((err) => unhandledError(err, new Set([context])));
+}
+
+function saveSettings(context) {
+  const json = {
+    event: "setSettings",
+    context,
+    payload: byContext[context].settings,
+  };
+  sdWebsocket.send(JSON.stringify(json));
 }
 
 globalThis.connectElgatoStreamDeckSocket =
@@ -422,35 +450,6 @@ globalThis.connectElgatoStreamDeckSocket =
           const oldSettings = byContext[context].settings;
           byContext[context].settings = settings;
           handleConnect(context);
-
-          // If there's a parsedConnectionConfig and it's different from what
-          // was there before, then do showOk or showAlert depending on whether
-          // the connection works.
-          if (
-            settings.parsedConnectionConfig &&
-            (oldSettings.parsedConnectionConfig == null ||
-              oldSettings.parsedConnectionConfig.ip !==
-                settings.parsedConnectionConfig.ip ||
-              oldSettings.parsedConnectionConfig.port !==
-                settings.parsedConnectionConfig.port)
-          ) {
-            const { parsedConnectionConfig } = settings;
-            const connection =
-              connections[getConnectionKey(parsedConnectionConfig)];
-            if (connection) {
-              connection.websocketReadyDefer.promise
-                .then(() => {
-                  const json = {
-                    event: "showOk",
-                    context,
-                  };
-                  sdWebsocket.send(JSON.stringify(json));
-                })
-                .catch((err) => {
-                  unhandledError(err, new Set([context]));
-                });
-            }
-          }
         }
       } catch (err) {
         unhandledError(err, new Set([context]));
