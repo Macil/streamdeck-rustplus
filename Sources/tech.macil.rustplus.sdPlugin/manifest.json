@@ -28,7 +28,7 @@
   "Name": "Rust+",
   "Icon": "pluginIcon",
   "URL": "https://github.com/Macil/streamdeck-rustplus#readme",
-  "Version": "1.0",
+  "Version": "1.0.1",
   "OS": [
     {
       "Platform": "mac",
