@@ -5,9 +5,9 @@
 let sdWebsocket = null,
   uuid = null,
   actionInfo = {},
-  settings = {};
+  settings;
 
-const websocketReady = newPromiseDefer();
+const sdWebsocketReady = newPromiseDefer();
 
 const isQT = navigator.appVersion.includes("QtWebEngine");
 
@@ -32,8 +32,19 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   addDynamicStyles(inInfo.colors, "connectElgatoStreamDeckSocket");
 
   /** let's see, if we have some settings */
-  settings = actionInfo?.payload?.settings;
+  settings = actionInfo?.payload?.settings || {};
   console.log({ settings, actionInfo });
+
+  // Temporary: migrate unparsed settings from 1.0
+  if (settings["connection-config"] && !settings.parsedConnectionConfig) {
+    settings.parsedConnectionConfig = parseConnectionConfig(
+      settings["connection-config"]
+    );
+    if (settings.parsedConnectionConfig) {
+      saveSettings();
+    }
+  }
+
   initPropertyInspector();
 
   // if connection was established, the websocket sends
@@ -45,7 +56,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
     };
     // register property inspector to Stream Deck
     sdWebsocket.send(JSON.stringify(json));
-    websocketReady.resolve(sdWebsocket);
+    sdWebsocketReady.resolve(sdWebsocket);
   };
 
   // websocket.onmessage = (evt) => {
@@ -57,7 +68,7 @@ window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   // };
 
   sdWebsocket.onerror = (event) => {
-    websocketReady.reject(event.error || event);
+    sdWebsocketReady.reject(event.error || event);
     console.error("got error from websocket", event);
   };
 };
@@ -66,18 +77,28 @@ function initPropertyInspector() {
   prepareDOMElements(document);
 }
 
-// our method to pass values to the plugin
-async function sendValueToPlugin(param, value) {
-  if (!sdWebsocket || sdWebsocket.readyState !== 1) {
-    await websocketReady;
+function parseConnectionConfig(connectionConfigStr) {
+  if (!connectionConfigStr) {
+    return null;
+  }
+  try {
+    // TODO can we parse this without using eval? Maybe we can
+    // use a regex on the string and then JSON.parse it.
+    const indirectEval = eval;
+    return indirectEval("(" + connectionConfigStr + ")");
+  } catch (e) {
+    return null;
+  }
+}
+
+async function saveSettings() {
+  if (sdWebsocket?.readyState !== WebSocket.OPEN) {
+    await sdWebsocketReady;
   }
   const json = {
-    action: actionInfo["action"],
-    event: "sendToPlugin",
+    event: "setSettings",
     context: uuid,
-    payload: {
-      [param]: value,
-    },
+    payload: settings,
   };
   sdWebsocket.send(JSON.stringify(json));
 }
@@ -99,12 +120,13 @@ function prepareDOMElements(baseElement = document) {
       el.value = settings[el.id];
     }
     el.addEventListener("input", (event) => {
-      const e = event.target;
-      const returnValue = {
-        key: e.id,
-        value: e.value,
-      };
-      sendValueToPlugin("sdpi_collection", returnValue);
+      settings[el.id] = el.value;
+      if (el.id === "connection-config") {
+        settings.parsedConnectionConfig = parseConnectionConfig(
+          settings["connection-config"]
+        );
+      }
+      saveSettings();
     });
   });
 

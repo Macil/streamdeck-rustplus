@@ -15,7 +15,7 @@ keys results from getConnectionKey(), and values are
 */
 const connections = Object.create(null);
 
-// keys are context strings, and values {settings, parsedConnectionConfig}
+// keys are context strings, and values {settings}
 const byContext = Object.create(null);
 
 const DestinationEnum = Object.freeze({
@@ -80,7 +80,7 @@ function getWebsocketUrl(parsedConnectionConfig) {
 }
 
 function handleConnect(context) {
-  const { parsedConnectionConfig } = byContext[context];
+  const { parsedConnectionConfig } = byContext[context].settings;
   if (!parsedConnectionConfig) {
     return;
   }
@@ -211,7 +211,7 @@ function handleConnect(context) {
 }
 
 function handleDisconnect(context) {
-  const { parsedConnectionConfig } = byContext[context];
+  const { parsedConnectionConfig } = byContext[context].settings;
   if (!parsedConnectionConfig) {
     return;
   }
@@ -251,7 +251,7 @@ function removeConnection(connectionKey) {
 }
 
 function onKeyUp(context, state) {
-  const { parsedConnectionConfig } = byContext[context];
+  const { parsedConnectionConfig } = byContext[context].settings;
   if (!parsedConnectionConfig) {
     unhandledError(
       new Error("No valid connection config for button"),
@@ -345,7 +345,7 @@ async function runWithTimeout(asyncFn, timeout) {
 
 function refreshSmartSwitchEntityInfo(connection, context) {
   (async () => {
-    const { parsedConnectionConfig } = byContext[context];
+    const { parsedConnectionConfig } = byContext[context].settings;
 
     const response = await sendToRustServer(
       connection,
@@ -369,15 +369,6 @@ function refreshSmartSwitchEntityInfo(connection, context) {
     };
     sdWebsocket.send(JSON.stringify(json));
   })().catch((err) => unhandledError(err, new Set([context])));
-}
-
-function saveSettings(context) {
-  const json = {
-    event: "setSettings",
-    context: context,
-    payload: byContext[context].settings,
-  };
-  sdWebsocket.send(JSON.stringify(json));
 }
 
 globalThis.connectElgatoStreamDeckSocket =
@@ -418,46 +409,47 @@ globalThis.connectElgatoStreamDeckSocket =
           const { settings } = payload;
           byContext[context] = {
             settings: settings || {},
-            parsedConnectionConfig: parseConnectionConfig(
-              settings?.["connection-config"]
-            ),
           };
           handleConnect(context);
         } else if (event === "willDisappear") {
           handleDisconnect(context);
           delete byContext[context];
-        } else if (event === "sendToPlugin") {
+        } else if (event === "didReceiveSettings") {
           const { payload } = jsonObj;
-          const sdpi_collection = payload?.sdpi_collection;
-          if (sdpi_collection) {
-            const { key, value } = sdpi_collection;
-            byContext[context].settings[key] = value;
-            if (key === "connection-config") {
-              handleDisconnect(context);
-              const parsedConnectionConfig = (byContext[
-                context
-              ].parsedConnectionConfig = parseConnectionConfig(value));
-              handleConnect(context);
+          const { settings } = payload;
 
-              if (parsedConnectionConfig) {
-                const connection =
-                  connections[getConnectionKey(parsedConnectionConfig)];
-                if (connection) {
-                  connection.websocketReadyDefer.promise
-                    .then(() => {
-                      const json = {
-                        event: "showOk",
-                        context,
-                      };
-                      sdWebsocket.send(JSON.stringify(json));
-                    })
-                    .catch((err) => {
-                      unhandledError(err, new Set([context]));
-                    });
-                }
-              }
+          handleDisconnect(context);
+          const oldSettings = byContext[context].settings;
+          byContext[context].settings = settings;
+          handleConnect(context);
+
+          // If there's a parsedConnectionConfig and it's different from what
+          // was there before, then do showOk or showAlert depending on whether
+          // the connection works.
+          if (
+            settings.parsedConnectionConfig &&
+            (oldSettings.parsedConnectionConfig == null ||
+              oldSettings.parsedConnectionConfig.ip !==
+                settings.parsedConnectionConfig.ip ||
+              oldSettings.parsedConnectionConfig.port !==
+                settings.parsedConnectionConfig.port)
+          ) {
+            const { parsedConnectionConfig } = settings;
+            const connection =
+              connections[getConnectionKey(parsedConnectionConfig)];
+            if (connection) {
+              connection.websocketReadyDefer.promise
+                .then(() => {
+                  const json = {
+                    event: "showOk",
+                    context,
+                  };
+                  sdWebsocket.send(JSON.stringify(json));
+                })
+                .catch((err) => {
+                  unhandledError(err, new Set([context]));
+                });
             }
-            saveSettings(context);
           }
         }
       } catch (err) {
