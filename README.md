@@ -20,7 +20,9 @@ In a terminal, run this command which will open a Steam login page:
 npx @liamcottle/rustplus.js fcm-register
 ```
 
-Log into Steam and the command should complete. Then run this command:
+Log into Steam and the command should complete. You won't have to run this command again.
+
+Now whenever you want to add one or more smart switches, run this command:
 
 ```
 npx @liamcottle/rustplus.js fcm-listen
@@ -28,7 +30,7 @@ npx @liamcottle/rustplus.js fcm-listen
 
 Leave that window open. Now in Rust, use the wire tool while holding the use key on a smart switch to activate the "Pair" menu option, just like you were pairing the smart switch with the Rust+ mobile app. When you do this, a block of text will appear in the terminal, starting with `{` and ending with `}`. Copy that text and paste it as the Entity Config on the Stream Deck button.
 
-The button should work now to toggle the Smart Switch!
+The Stream Deck button should work now to toggle the Smart Switch!
 
 ## Developing
 
