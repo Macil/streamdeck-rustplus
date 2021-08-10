@@ -11,6 +11,27 @@ const sdWebsocketReadyDefer = newPromiseDefer();
 
 const isQT = navigator.appVersion.includes("QtWebEngine");
 
+function unhandledError(err) {
+  console.error("Unhandled error:", err);
+  const errString = err.stack ?? String(err);
+  sdLogMessage(`Got unhandled error (property inspector): ${errString}`, true);
+}
+
+function sdLogMessage(message, quiet = false) {
+  if (!quiet) {
+    console.log(message);
+  }
+  sdWebsocketReadyDefer.promise.then(() => {
+    const json = {
+      event: "logMessage",
+      payload: {
+        message,
+      },
+    };
+    sdWebsocket.send(JSON.stringify(json));
+  });
+}
+
 window.connectElgatoStreamDeckSocket = function connectElgatoStreamDeckSocket(
   inPort,
   inUUID,
@@ -77,18 +98,35 @@ function initPropertyInspector() {
   prepareDOMElements(document);
 }
 
+const CONCONFIG_VALIDATOR =
+  /^\s*{\s*([{}\sa-zA-Z:+,$_\d]+|'([^\\']|\\[^])*'|"([^\\"]|\\[^])*")+}\s*$/;
+
 function parseConnectionConfig(connectionConfigStr) {
   if (!connectionConfigStr) {
     return null;
   }
   try {
-    // TODO can we parse this without using eval? Maybe we can
-    // use a regex on the string and then JSON.parse it.
-    const indirectEval = eval;
-    return indirectEval("(" + connectionConfigStr + ")");
+    return JSON.parse(connectionConfigStr);
   } catch (e) {
-    return null;
+    // ignore
   }
+  // Ugh, this is gross. fcm-listen doesn't produce JSON but instead makes
+  // raw javascript that has to be executed.
+  // Here we try to restrict the value to something that shouldn't be able
+  // to execute any code besides adding things together.
+  // The risk isn't super high: we're just trying to prevent the user
+  // being able to self-XSSing themselves.
+  // Note that it is important that . ` ( ) [ ] = are not allowed outside of
+  // well-formed strings.
+  if (CONCONFIG_VALIDATOR.test(connectionConfigStr)) {
+    try {
+      const indirectEval = eval;
+      return indirectEval("(" + connectionConfigStr + ")");
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
 }
 
 async function saveSettings() {
@@ -120,13 +158,17 @@ function prepareDOMElements(baseElement = document) {
       el.value = settings[el.id];
     }
     el.addEventListener("input", (event) => {
-      settings[el.id] = el.value;
-      if (el.id === "connection-config") {
-        settings.parsedConnectionConfig = parseConnectionConfig(
-          settings["connection-config"]
-        );
+      try {
+        settings[el.id] = el.value;
+        if (el.id === "connection-config") {
+          settings.parsedConnectionConfig = parseConnectionConfig(
+            settings["connection-config"]
+          );
+        }
+        saveSettings();
+      } catch (err) {
+        unhandledError(err);
       }
-      saveSettings();
     });
   });
 
