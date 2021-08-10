@@ -1,6 +1,6 @@
 # streamdeck-rustplus
 
-This is an **unofficial** [Stream Deck](https://www.elgato.com/en/stream-deck-mk2) plugin for interacting with Smart Switches in the PC game [Rust](https://store.steampowered.com/app/252490/Rust/).
+This is an **unofficial** [Stream Deck](https://www.elgato.com/en/stream-deck-mk2) plugin for interacting with Smart Switches in the PC game [Rust](https://store.steampowered.com/app/252490/Rust/). This plugin mimics some of the functionality of the official [Rust companion app](https://rust.facepunch.com/companion) directly on the Stream Deck.
 
 ## Install
 
