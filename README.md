@@ -34,7 +34,7 @@ The Stream Deck button should work now to toggle the Smart Switch!
 
 ## Developing
 
-If you want to contribute to this project and develop on its code, copy or symlink the "Sources/tech.macil.rustplus.sdPlugin" directory into the Stream Deck Plugins directory. You should also turn on Stream Deck's Javascript debugging functionality. See [Create your own plugin](https://developer.elgato.com/documentation/stream-deck/sdk/create-your-own-plugin/) for more information on these steps.
+If you want to contribute to this project and develop on its code, copy or symlink the "Sources/tech.macil.rustplus.sdPlugin" directory into the Stream Deck Plugins directory. You should also turn on Stream Deck's Javascript debugging functionality. See [Create your own plugin](https://docs.elgato.com/streamdeck/sdk/introduction/getting-started/) for more information on these steps.
 
 ## About
 
