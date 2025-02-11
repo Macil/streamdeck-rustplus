@@ -111,7 +111,7 @@ function initPropertyInspector() {
 }
 
 const CONCONFIG_VALIDATOR =
-  /^\s*{\s*([{}\sa-zA-Z:+,$_\d]+|'([^\\']|\\[^])*'|"([^\\"]|\\[^])*")+}\s*$/;
+  /^\s*{([{}\sa-zA-Z:+,$_\d]|'([^\\']|\\[^])*'|"([^\\"]|\\[^])*")+}\s*$/;
 
 function parseConnectionConfig(connectionConfigStr) {
   if (!connectionConfigStr) {
