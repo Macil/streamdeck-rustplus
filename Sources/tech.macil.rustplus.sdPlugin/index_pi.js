@@ -111,7 +111,7 @@ function initPropertyInspector() {
 }
 
 const CONCONFIG_VALIDATOR =
-  /^\s*{([{}\sa-zA-Z:+,$_\d]|'([^\\']|\\[^])*'|"([^\\"]|\\[^])*")+}\s*$/;
+  /^\s*{([\[\]{}\sa-zA-Z:+,$_\d]|'([^\\']|\\[^])*'|"([^\\"]|\\[^])*")+}\s*$/;
 
 function parseConnectionConfig(connectionConfigStr) {
   if (!connectionConfigStr) {
@@ -133,7 +133,16 @@ function parseConnectionConfig(connectionConfigStr) {
   if (CONCONFIG_VALIDATOR.test(connectionConfigStr)) {
     try {
       const indirectEval = eval;
-      return indirectEval("(" + connectionConfigStr + ")");
+      const parsedValue = indirectEval("(" + connectionConfigStr + ")");
+
+      // the rustplus.js CLI updated at some point to output a big wrapper
+      // object instead of the value we want, so detect and handle that case.
+      if (parsedValue && !parsedValue.ip && Array.isArray(parsedValue.appData)) {
+        const candidate = parsedValue.appData.find(entry => entry.key === "body");
+        return candidate ? JSON.parse(candidate.value) : null;
+      }
+
+      return parsedValue;
     } catch (e) {
       return null;
     }
